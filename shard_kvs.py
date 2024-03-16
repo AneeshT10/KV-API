@@ -117,6 +117,28 @@ def add_node(ID):
     
 @app.route("/shard/reshard", methods = ['PUT'])
 def reshard():
+    #delete non functional nodes before attempting to reshard
+    current_node_del_list = []
+    for node in view_list:
+        del_url = f'http://{node}/view'
+        try:
+            res = requests.get(del_url, timeout=1)
+        except:
+            current_node_del_list.append(node)
+            for ip in view_list:
+                if ip == sa:
+                    continue
+                try:
+                    r = requests.delete(del_url, timeout=1)
+                except:
+                    continue
+    for ad in current_node_del_list:
+        try:
+            view_list.remove(ad)
+        except:
+            continue
+
+
     try:
         new_shard_list = {}
         new_kv_list = {}
@@ -205,7 +227,7 @@ def view():
     else :
         if data["socket-address"] in view_list:
             view_list.remove(data["socket-address"])
-            del vc_map[data["socket-address"]]
+            #del vc_map[data["socket-address"]]
             return {"result": "deleted"}, 200
         else:
             return {"error": "View has no such replica"}, 404
@@ -344,7 +366,7 @@ def kvs(key):
                 put_lock.release()
                 return {"error": "Key is too long"}, 400
             if meta_data is not None:
-                if meta_data != vc_map:
+                if not check_equal(meta_data, vc_map):
                     put_lock.release()
                     return {"error": "Causal dependencies not satisfied; try again later"}, 503
             vc_map[sa] += 1 #Message about to be sent
@@ -372,7 +394,7 @@ def kvs(key):
                 for i in ad_rm:
                     try:
                         view_list.remove(i)
-                        del vc_map[i]
+                        #del vc_map[i]
                     except:
                         continue
                 put_lock.release()
@@ -408,7 +430,7 @@ def kvs(key):
 
             meta_data = data["causal-metadata"]
             if meta_data is not None:
-                if meta_data != vc_map:
+                if not check_equal(meta_data, vc_map):
                     put_lock.release()
                     return {"error": "Causal dependencies not satisfied; try again later"}, 503
             if key not in kvlist.keys():
@@ -439,7 +461,7 @@ def kvs(key):
                                     continue
                 for i in ad_rm:
                     try:
-                        del vc_map[i]
+                        #del vc_map[i]
                         view_list.remove(i)
                     except:
                         continue
@@ -470,16 +492,8 @@ def kvs(key):
             
             meta_data = data["causal-metadata"]
             if meta_data is not None:
-                if meta_data != vc_map:
-                    set1 = set(meta_data.items())
-                    set2 = set(vc_map.items())
-                    difference = set1 - set2
-                    d = list(difference)
-                    count = 0
-                    for tup in d:
-                        count += tup[1]
-                    if count != 0:
-                        return {"error": "Causal dependencies not satisfied; try again later"}, 503
+                if not check_equal(meta_data, vc_map):
+                    return {"error": "Causal dependencies not satisfied; try again later"}, 503
             else:
                 meta_data = vc_map
             if key in kvlist.keys():
